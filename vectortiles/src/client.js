@@ -10,58 +10,55 @@ require('./css/style.css');
 const {join} = require('lodash');
 
 const openlayersMap = require('./lib/openlayers');
-const openlayersMBSMap = require('./lib/openlayersMBS');
-const mapboxglMap = require('./lib/mapboxgl');
-const leafletMap = require('./lib/leaflet');
-const leafletMBGLMap = require('./lib/leafletMBGL');
-const tangramMap = require('./lib/tangram');
-
-const {setView, getView} = require('./synch');
 
 const center = {lng: 32.61751911206343, lat: 36.09650048440878};
 const zoom = 14;
 
-const spritesPath = process.env.spritesPath;
-const url = process.env.geoserverUrl;
-const sourceName = process.env.sourceName;
+const geoserverUrl = "http://localhost:8080/geoserver";
+// layer group / layer
+const layerName = "Daraa";
+const schemeId = '900913';
 
-openlayersMap('vt-openlayers-map', center, zoom, getView, setView, 'openlayers', url, spritesPath, sourceName);
-openlayersMBSMap('vt-openlayers-mbs-map', center, zoom, getView, setView, 'openlayers-mbs', url, spritesPath, sourceName);
-mapboxglMap('vt-mapboxgl-map', center, zoom, getView, setView, 'mapboxgl', url, spritesPath, sourceName);
-leafletMap('vt-leaflet-map', center, zoom, getView, setView, 'leaflet', url, spritesPath, sourceName);
-leafletMBGLMap('vt-leaflet-mbgl-map', center, zoom, getView, setView, 'leaflet-mbgl', url, spritesPath, sourceName);
-tangramMap('vt-tangram-map', center, zoom, getView, setView, 'tangram', url, spritesPath, sourceName);
+// TMS `${geoserverUrl}/gwc/service/tms/1.0.0/${layerName}@EPSG%3A${schemeId}@pbf/{z}/{x}/{-y}.pbf`
+// WFS `${geoserverUrl}/wfs3/collections/${layerName}/tiles/${schemeId}/{z}/{x}/{y}
+
+const wfsUrl = `${geoserverUrl}/gwc/service/tms/1.0.0/${layerName}@EPSG%3A${schemeId}@pbf/{z}/{x}/{-y}.pbf`;
+
+const spritesPath = "http://localhost:3000/sprites";
+
+const layersInLayerGroup = [
+    'AgricultureSrf',
+    'VegetationSrf',
+    'SettlementSrf',
+    'MilitarySrf',
+    'CultureSrf',
+    'HydrographyCrv',
+    'HydrographySrf',
+    'TransportationGroundCrv',
+    'UtilityInfrastructureCrv',
+    'CulturePnt',
+    'FacilityPnt',
+    'StructurePnt',
+    'UtilityInfrastructurePnt'
+];
+
+// set to true to set styles
+const styled = false;
+
+openlayersMap('vt-openlayers-map', wfsUrl, center, zoom, spritesPath, layersInLayerGroup, styled);
 
 const requests = [
     {
-        url: '/geoserver/gwc/service/wmts?',
-        comment: 'WMTS GetCapabilities Request',
-        params: {
-            Service: 'WMTS',
-            Request: 'GetCapabilities',
-            Version: '1.0.0'
-        }
-    },
-    {
-        url: '/geoserver/gwc/service/wmts?',
-        comment: 'WMTS GetTile Request',
-        params: {
-            Service: 'WMTS',
-            Request: 'GetTile',
-            Version: '1.0.0',
-            Format: 'application/x-protobuf;type=mapbox-vector',
-            Layer: 'sourceName',
-            TilematrixSet: 'EPSG:900193',
-            TileMatrix: 'EPSG:900193:{z}',
-            TileCol: '{x}',
-            TileRow: '{y}'
-        }
+        url: '/geoserver/wfs3/collections/',
+        comment: 'WFS Request',
+        path: ['layerName', 'tiles', 'schemeId', 'z', 'x', 'y'],
+        params: {}
     }
 ];
 
 const snippet = requests.map(req => {
     const params = req.params && Object.keys(req.params).map((key) => `<b>${key}</b>=<i>${req.params[key]}</i>`) || '';
-    return '<div class="vt-comment"><small>' + req.comment + '</small></div>' + req.url + join(params, ' &');
+    return '<div class="vt-comment"><small>' + req.comment + '</small></div>' + req.url + join((req.path || []).map(val => `<b>${val}</b>` ), '/') + join(params, ' &');
 }, '');
 
 document.getElementById('vt-snippet').innerHTML = join(snippet, '<br/>');

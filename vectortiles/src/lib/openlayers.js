@@ -14,17 +14,13 @@ const Icon = require('ol/style/Icon').default;
 const MultiLineString = require('ol/geom/MultiLineString').default;
 const LayerVectorTile = require('ol/layer/VectorTile').default;
 const VectorTile = require('ol/source/VectorTile').default;
-const WMTS = require('ol/source/WMTS').default;
-const { optionsFromCapabilities } = require('ol/source/WMTS');
 const MVT = require('ol/format/MVT').default;
-const WMTSCapabilities = require('ol/format/WMTSCapabilities').default;
 const View = require('ol/View').default;
 const Map = require('ol/Map').default;
 const { transform } = require('ol/proj');
 
 const { createXYZ } = require('ol/tilegrid');
 
-const axios = require('axios');
 const { vec2 } = require('gl-matrix');
 
 require('ol/ol.css');
@@ -318,78 +314,52 @@ const stylesFunc = (spritesPath) => ({
     }) : null]
 });
 
-const getUrl = ({ name, epsg, url }) => `${url}/gwc/service/tms/1.0.0/${name}@EPSG%3A${epsg}@pbf/{z}/{x}/{-y}.pbf`;
-
-const openlayersMap = (target, center, startZoom, getView, setView, label, url, spritesPath, sourceName, tms) =>
-    axios.get(`${url}/gwc/service/wmts?REQUEST=GetCapabilities`)
-    .then(({ data }) => {
+const openlayersMap = (target, url, center, startZoom, spritesPath, layersInLayerGroup = [], styled) => {
 
         const styles = stylesFunc(spritesPath);
-        const layerName = sourceName;
-        const caps = new WMTSCapabilities().read(data);
 
-        const wmts = new WMTS(
-            optionsFromCapabilities(caps, {
-                layer: layerName,
-                matrixSet: 'EPSG:900913',
-                format: 'application/x-protobuf;type=mapbox-vector'
-            })
-        );
-        
-        const source = !tms ? new VectorTile({
-            format: new MVT(),
-            tileUrlFunction: wmts.getTileUrlFunction(),
-            tileGrid: wmts.getTileGrid()
-        }) : new VectorTile({
+        const source = new VectorTile({
             tilePixelRatio: 1,
             tileGrid: createXYZ({ maxZoom: 19 }),
             format: new MVT(),
-            url: getUrl({ url, name, epsg: '900913' })
+            url
         });
 
-        const layers = [
-            'AgricultureSrf',
-            'VegetationSrf',
-            'SettlementSrf',
-
-            'MilitarySrf',
-            'CultureSrf',
-
-            'HydrographyCrv',
-            'HydrographySrf',
-            'TransportationGroundCrv',
-            'UtilityInfrastructureCrv',
-
-            'CulturePnt',
-            'FacilityPnt',
-            'StructurePnt',
-
-            'UtilityInfrastructurePnt'
-        ].reduce((newLayers, name) => {
-            if (styles[name]) {
-                const vectorsTile = styles[name].map(style =>
-                    new LayerVectorTile({
-                        style,
-                        source
-                    })
-                );
-
+        let layers = [];
+        if (styled) {
+            layers = layersInLayerGroup.reduce((newLayers, name) => {
+                if (styles[name]) {
+                    const vectorsTile = styles[name].map(style =>
+                        new LayerVectorTile({
+                            style,
+                            source
+                        })
+                    );
+    
+                    return [
+                        ...newLayers,
+                        ...vectorsTile
+                    ];
+                }
+                const vectorTile = new LayerVectorTile({
+                    style: defaultStyle,
+                    source
+                });
                 return [
                     ...newLayers,
-                    ...vectorsTile
+                    vectorTile
                 ];
-            }
-            const vectorTile = new LayerVectorTile({
-                style: defaultStyle,
-                source
-            });
-            return [
-                ...newLayers,
-                vectorTile
+            }, []);
+        } else {
+            layers = [
+                new LayerVectorTile({
+                    style: defaultStyle,
+                    source
+                })
             ];
-        }, []);
+        }
 
-        const map = new Map({
+        new Map({
             target,
             view: new View({
                 center: transform([center.lat, center.lng], 'EPSG:4326', 'EPSG:3857'),
@@ -398,21 +368,6 @@ const openlayersMap = (target, center, startZoom, getView, setView, label, url, 
             layers
         });
         zoom = startZoom;
-        if (getView) {
-            map.on('moveend', () => {
-                const view = map.getView();
-                zoom = view.getZoom();
-                const coords4326 = transform(view.getCenter(), 'EPSG:3857', 'EPSG:4326');
-                getView({ lat: coords4326[1], lng: coords4326[0] }, view.getZoom(), label);
-            });
-
-            setView(label, (cntr, changedZoom) => {
-                map.setView(new View({
-                    center: transform([cntr.lng, cntr.lat], 'EPSG:4326', 'EPSG:3857'),
-                    zoom: changedZoom
-                }));
-            });
-        }
-    });
+};
 
 module.exports = openlayersMap;
